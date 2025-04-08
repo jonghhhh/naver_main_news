@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>이 시각 네이버 언론사별 주요 뉴스</title>
+    <style>
+        body {
+            font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #03c75a; /* 네이버 녹색 */
+            border-bottom: 2px solid #03c75a;
+            padding-bottom: 10px;
+        }
+        .last-updated {
+            text-align: right;
+            margin-bottom: 20px;
+            font-size: 0.9em;
+            color: #666;
+        }
+        .news-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        .news-card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            overflow: hidden;
+            transition: transform 0.3s;
+        }
+        .news-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .news-header {
+            background-color: #03c75a;
+            color: white;
+            padding: 10px 15px;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        .news-list {
+            padding: 0;
+            margin: 0;
+            list-style: none;
+        }
+        .news-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+        }
+        .news-item:last-child {
+            border-bottom: none;
+        }
+        .news-link {
+            color: #333;
+            text-decoration: none;
+            display: block;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .news-link:hover {
+            color: #03c75a;
+        }
+        .news-time {
+            font-size: 0.8em;
+            color: #888;
+            margin-top: 5px;
+        }
+        .no-news {
+            padding: 20px;
+            text-align: center;
+            color: #999;
+        }
+        .loading {
+            text-align: center;
+            padding: 50px;
+            font-size: 1.2em;
+            color: #666;
+        }
+        .error {
+            background-color: #fff0f0;
+            color: #d32f2f;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>이 시각 네이버 언론사별 주요 뉴스</h1>
+    <div class="last-updated" id="last-updated">마지막 업데이트: 로딩 중...</div>
+    
+    <div id="news-container" class="news-grid">
+        <div class="loading">뉴스 데이터를 불러오는 중입니다...</div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // 같은 저장소 내 JSON 파일 경로
+            const jsonUrl = './naver_main_news_040825.json';
+            
+            fetch(jsonUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('네트워크 응답이 올바르지 않습니다');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    displayNews(data);
+                })
+                .catch(error => {
+                    document.getElementById('news-container').innerHTML = `
+                        <div class="error">
+                            <p>데이터를 불러오는 중 오류가 발생했습니다.</p>
+                            <p>${error.message}</p>
+                        </div>
+                    `;
+                });
+        });
+
+        function displayNews(data) {
+            // 데이터를 언론사별로 그룹화
+            const groupedByOrg = {};
+            
+            data.forEach(item => {
+                if (!groupedByOrg[item.news_org]) {
+                    groupedByOrg[item.news_org] = [];
+                }
+                groupedByOrg[item.news_org].push(item);
+            });
+            
+            // 각 그룹을 최신 타임스탬프 기준으로 정렬하고 상위 6개만 선택
+            const processedData = {};
+            Object.keys(groupedByOrg).forEach(org => {
+                processedData[org] = groupedByOrg[org]
+                    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+                    .slice(0, 6);
+            });
+            
+            // 언론사 순서 지정 (press_oid_list 기준)
+            const orderedOrgs = [
+                '조선일보', '중앙일보', '동아일보', '한겨레', '경향신문', '오마이뉴스', 
+                'KBS', 'MBC', 'SBS', 'TV조선', 'JTBC', '채널A', 'MBN', 
+                '연합뉴스', 'YTN', '국민일보', '한국일보', 
+                '매일경제', '한국경제', '아시아경제', 
+                '부산일보', '전주MBC', 'KBC광주방송', '대전일보', 'CJB청주방송', '강원도민일보', '대구MBC', 'JIBS'
+            ];
+            
+            // 최신 업데이트 시간 찾기
+            let latestTimestamp = new Date(0); // 1970-01-01
+            data.forEach(item => {
+                const itemTime = new Date(item.timestamp);
+                if (itemTime > latestTimestamp) {
+                    latestTimestamp = itemTime;
+                }
+            });
+            
+            // 마지막 업데이트 시간 표시
+            const lastUpdatedElement = document.getElementById('last-updated');
+            lastUpdatedElement.textContent = `마지막 업데이트: ${formatDateTime(latestTimestamp)}`;
+            
+            // 뉴스 컨테이너 가져오기
+            const newsContainer = document.getElementById('news-container');
+            newsContainer.innerHTML = ''; // 로딩 메시지 제거
+            
+            // 각 언론사별 카드 생성 (지정된 순서대로)
+            orderedOrgs.forEach(org => {
+                // 데이터가 없는 언론사는 건너뛰기
+                if (!processedData[org]) {
+                    return;
+                }
+                
+                const newsItems = processedData[org];
+                
+                const card = document.createElement('div');
+                card.className = 'news-card';
+                
+                const header = document.createElement('div');
+                header.className = 'news-header';
+                header.textContent = org;
+                card.appendChild(header);
+                
+                const list = document.createElement('ul');
+                list.className = 'news-list';
+                
+                if (newsItems.length === 0) {
+                    const noNews = document.createElement('div');
+                    noNews.className = 'no-news';
+                    noNews.textContent = '최근 기사가 없습니다';
+                    card.appendChild(noNews);
+                } else {
+                    newsItems.forEach(item => {
+                        const listItem = document.createElement('li');
+                        listItem.className = 'news-item';
+                        
+                        const link = document.createElement('a');
+                        link.className = 'news-link';
+                        link.href = item.url;
+                        link.textContent = item.title;
+                        link.target = '_blank';
+                        listItem.appendChild(link);
+                        
+                        const time = document.createElement('div');
+                        time.className = 'news-time';
+                        time.textContent = formatDateTime(new Date(item.timestamp));
+                        listItem.appendChild(time);
+                        
+                        list.appendChild(listItem);
+                    });
+                    card.appendChild(list);
+                }
+                
+                newsContainer.appendChild(card);
+            });
+        }
+        
+        function formatDateTime(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            
+            return `${year}-${month}-${day} ${hours}:${minutes}`;
+        }
+    </script>
+</body>
+</html>
