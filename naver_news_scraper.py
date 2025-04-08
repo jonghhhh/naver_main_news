@@ -59,7 +59,7 @@ def scrape_naver_news():
 def update_github_json(data):
     # GitHub authentication
     github_token = os.environ.get('GITHUB_TOKEN')
-    repo_name = os.environ.get('jonghhhh/naver_main_news')
+    repo_name = 'jonghhhh/naver_main_news'
     file_path = 'naver_main_news_040825.json'
     
     g = Github(github_token)
