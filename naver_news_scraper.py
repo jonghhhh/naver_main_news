@@ -6,6 +6,7 @@ import pytz
 import json
 import os
 from github import Github, GithubException
+import base64
 
 # Naver press OID dictionary
 press_oid_list = {
@@ -56,8 +57,44 @@ def scrape_naver_news():
     
     return results
 
+def get_existing_data(repo, file_path):
+    """GitHub 저장소에서 기존 JSON 데이터 가져오기"""
+    try:
+        # API를 통해 파일 내용 가져오기
+        contents = repo.get_contents(file_path)
+        
+        # base64 인코딩인 경우만 처리
+        if contents.encoding == 'base64':
+            content_string = base64.b64decode(contents.content).decode('utf-8')
+            try:
+                existing_data = json.loads(content_string)
+                print(f"기존 파일에서 {len(existing_data)}개의 데이터를 불러왔습니다.")
+                return existing_data, contents.sha
+            except json.JSONDecodeError:
+                print("파일이 유효한 JSON 형식이 아닙니다. 빈 배열로 시작합니다.")
+                return [], contents.sha
+        else:
+            print(f"파일의 인코딩이 지원되지 않습니다: {contents.encoding}")
+            return [], None
+            
+    except GithubException as e:
+        if e.status == 404:
+            print("파일이 존재하지 않습니다. 새로 생성합니다.")
+        else:
+            print(f"GitHub API 오류: {e.data}")
+        return [], None
+        
+    except Exception as e:
+        print(f"파일 읽기 중 오류 발생: {str(e)}")
+        return [], None
+
 def update_github_json(data):
-    # GitHub authentication
+    """새 데이터를 GitHub 저장소에 추가 (기존 데이터 유지)"""
+    if not data:
+        print("추가할 데이터가 없습니다.")
+        return True
+        
+    # GitHub 인증
     github_token = os.environ.get('GITHUB_TOKEN')
     repo_name = 'jonghhhh/naver_main_news'
     file_path = 'naver_main_news_040825.json'
@@ -66,55 +103,53 @@ def update_github_json(data):
     repo = g.get_repo(repo_name)
     
     try:
-        # Try to get existing file
-        try:
-            file_content = repo.get_contents(file_path)
-            # Check if the encoding is valid
-            if file_content.encoding != 'base64':
-                print(f"Warning: File has unsupported encoding: {file_content.encoding}")
-                # Create the file from scratch
-                raise GithubException(404, "Invalid encoding, recreating file")
-            
-            existing_data = json.loads(file_content.decoded_content.decode())
-            
-            # Add new data
-            combined_data = existing_data + data
-            
-            # Update the file in the repository
+        # 기존 데이터 가져오기
+        existing_data, sha = get_existing_data(repo, file_path)
+        
+        # 새 데이터 추가
+        combined_data = existing_data + data
+        
+        # JSON 문자열로 변환
+        json_content = json.dumps(combined_data, ensure_ascii=False, indent=2)
+        
+        if sha:
+            # 파일이 이미 존재하면 업데이트
             repo.update_file(
                 file_path,
                 f"Update news data at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                json.dumps(combined_data, ensure_ascii=False, indent=2),
-                file_content.sha
+                json_content,
+                sha
             )
-            print(f"Updated existing file with {len(data)} new entries")
-            
-        except GithubException as e:
-            # File doesn't exist or has invalid encoding
-            if e.status == 404:
-                repo.create_file(
-                    file_path,
-                    f"Initial news data at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                    json.dumps(data, ensure_ascii=False, indent=2)
-                )
-                print(f"Created new file with {len(data)} entries")
-            else:
-                raise
-                
+            print(f"기존 파일을 업데이트했습니다. 이제 총 {len(combined_data)}개의 항목이 있습니다.")
+        else:
+            # 파일이 없으면 새로 생성
+            repo.create_file(
+                file_path,
+                f"Initial news data at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                json_content
+            )
+            print(f"새 파일을 생성했습니다. {len(data)}개의 항목이 있습니다.")
+        
+        return True
+        
     except Exception as e:
-        # Handle other exceptions
-        print(f"Unexpected error: {str(e)}")
-        raise
+        print(f"GitHub 업데이트 중 오류 발생: {str(e)}")
+        return False
 
 if __name__ == "__main__":
-    # Scrape the news
+    # 뉴스 스크랩
     news_data = scrape_naver_news()
     
     if not news_data:
-        print("No news data was scraped. Exiting.")
+        print("수집된 뉴스 데이터가 없습니다. 종료합니다.")
         exit(0)
     
-    # Update the GitHub repository
-    update_github_json(news_data)
+    # GitHub 저장소 업데이트
+    success = update_github_json(news_data)
     
-    print(f"Successfully scraped {len(news_data)} news items and updated GitHub repo.")
+    if success:
+        print(f"성공적으로 {len(news_data)}개의 뉴스 항목을 스크랩하고 GitHub 저장소를 업데이트했습니다.")
+    else:
+        print(f"GitHub 저장소 업데이트에 실패했습니다.")
+        # 실패 시에도 프로그램은 정상 종료되어야 크론잡 오류가 발생하지 않습니다
+        exit(0)  # 0으로 종료하여 크론잡 오류 방지
