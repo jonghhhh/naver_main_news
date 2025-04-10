@@ -66,27 +66,36 @@ def update_github_json(data):
     repo = g.get_repo(repo_name)
     
     try:
-        # Try to get the existing file
+        # 기존 파일 가져오기 시도
         file_content = repo.get_contents(file_path)
         existing_data = json.loads(file_content.decoded_content.decode())
         
-        # Append new data
+        # 새 데이터 추가
         combined_data = existing_data + data
         
-        # Update file in repository
+        # 저장소의 파일 업데이트
         repo.update_file(
             file_path,
             f"Update news data at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             json.dumps(combined_data, ensure_ascii=False, indent=2),
-            file_content.sha
+            file_content.sha  # SHA가 이미 포함되어 있습니다
         )
-    except:
-        # If file doesn't exist, create it
-        repo.create_file(
-            file_path,
-            f"Initial news data at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            json.dumps(data, ensure_ascii=False, indent=2)
-        )
+    except github.GithubException as e:
+        # 파일이 존재하지 않는 경우에만 새로 생성
+        if e.status == 404:  # 파일을 찾을 수 없음
+            repo.create_file(
+                file_path,
+                f"Initial news data at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                json.dumps(data, ensure_ascii=False, indent=2)
+            )
+        else:
+            # 다른 GitHub 예외 처리
+            print(f"GitHub 오류: {e.data}")
+            raise  # 다른 GitHub 예외는 다시 발생시킵니다
+    except Exception as e:
+        # 기타 예외 처리
+        print(f"예상치 못한 오류: {str(e)}")
+        raise  # 다른 예외는 다시 발생시킵니다
 
 if __name__ == "__main__":
     # Scrape the news
