@@ -5,7 +5,7 @@ from datetime import datetime
 import pytz
 import json
 import os
-from github import Github
+from github import Github, GithubException
 
 # Naver press OID dictionary
 press_oid_list = {
@@ -80,7 +80,7 @@ def update_github_json(data):
             json.dumps(combined_data, ensure_ascii=False, indent=2),
             file_content.sha  # SHA가 이미 포함되어 있습니다
         )
-    except github.GithubException as e:
+    except GithubException as e:
         # 파일이 존재하지 않는 경우에만 새로 생성
         if e.status == 404:  # 파일을 찾을 수 없음
             repo.create_file(
